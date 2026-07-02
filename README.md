@@ -140,17 +140,19 @@ python scripts/pateway_api.py all
 
 ## 输出示例
 
+以下是虚构示例，非真实账户数据：
+
 ```text
-Available Quota:    $98.9
-Monthly Spending:   $3.12
-Total Rewards:      $190
+Available Quota:    $123.45
+Monthly Spending:   $6.78
+Total Rewards:      $200
 ```
 
 ```text
 Key Name             Status     Mode         Limit          Used/Month
 --------------------------------------------------------------------------
-aliyun-low-cost      active     经济模式      No limit     $       2.78
-aliyun               active     默认          No limit     $       0.00
+economy-key          active     经济模式      No limit     $       1.23
+default-key          active     默认          No limit     $       0.45
 ```
 
 ---
