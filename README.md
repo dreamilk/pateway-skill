@@ -1,6 +1,8 @@
 # pateway-skill
 
-用命令行查询 PatewayAI 控制台数据的轻量工具 / Agent 技能。
+用命令行查询 PatewayAI 控制台数据的轻量工具 / 可复用 Agent 技能。
+
+适用于 Codex、Claude Code、Cursor、Hermes 等 Agent，也可以作为独立 CLI 使用；不绑定特定 Agent 框架。
 
 它可以查询：
 

@@ -7,15 +7,44 @@ description: Query PatewayAI console data (balance/quota, API keys usage, usage 
 
 用 PatewayAI Web API 查询控制台数据：账户额度、API Key 列表、每个 Key 的服务模式/月用量、全局用量趋势、调用明细、服务模式支持的模型，以及“某个 API Key 支持哪些模型”。无需浏览器。
 
+这个仓库既可以作为普通命令行工具使用，也可以被 Codex、Claude Code、Cursor、Hermes 等 Agent 当作可复用技能/工具使用；不依赖特定 Agent 框架。
+
 ## 安装
+
+### 通用 CLI 安装
 
 ```bash
 git clone https://github.com/dreamilk/pateway-skill.git
+cd pateway-skill
+python -m pip install -r requirements.txt
+```
+
+如果系统 Python 是 PEP668 保护环境，请使用 venv 或 uv：
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+### 给 Agent 使用
+
+把本仓库 clone 到你的工具/skills 目录，并让 Agent 调用：
+
+```bash
+python scripts/pateway_api.py <subcommand>
+```
+
+建议把常用命令写入当前项目的 `AGENTS.md`、`CLAUDE.md`、`README.md` 或对应 Agent 的规则文件中。
+
+### 可选：作为 Hermes skill 安装
+
+如果你使用 Hermes Agent，可以复制到 Hermes skills 目录：
+
+```bash
 mkdir -p ~/.hermes/skills/devops/pateway-dashboard
 cp -r pateway-skill/* ~/.hermes/skills/devops/pateway-dashboard/
 ```
-
-或作为 Hermes skill 源安装时，将本仓库内容放到 `~/.hermes/skills/devops/pateway-dashboard/`。
 
 ## 配置凭证
 
