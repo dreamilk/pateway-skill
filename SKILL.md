@@ -1,11 +1,11 @@
 ---
 name: pateway-dashboard
-description: Query PatewayAI console data (balance/quota, API keys usage, usage logs, service modes, supported models) via the web API — no browser needed.
+description: Query PatewayAI console data (balance/quota, API keys usage, usage logs, service modes, supported models, public site notifications, and personal quota alerts) via the web API — no browser needed.
 ---
 
 # PatewayAI Dashboard API Skill
 
-用 PatewayAI Web API 查询控制台数据：账户额度、API Key 列表、每个 Key 的服务模式/月用量、全局用量趋势、调用明细、服务模式支持的模型，以及“某个 API Key 支持哪些模型”。无需浏览器。
+用 PatewayAI Web API 查询控制台数据：账户额度、API Key 列表、每个 Key 的服务模式/月用量、全局用量趋势、调用明细、服务模式支持的模型、官网通知/消息、个人额度预警/奖励过期历史，以及兑换平台奖励码。无需浏览器。
 
 这个仓库既可以作为普通命令行工具使用，也可以被 Codex、Claude Code、Cursor、Hermes 等 Agent 当作可复用技能/工具使用；不依赖特定 Agent 框架。
 
@@ -76,8 +76,12 @@ python scripts/pateway_api.py <subcommand>
 | `keys` | API Key 列表：名称、状态、服务模式、月限额、本月用量 |
 | `usage [24h\|7d\|30d]` | 全局用量统计 + 趋势：花费、请求数、输入/输出 tokens |
 | `logs [--page N] [--size M]` | 使用明细：时间、Key、服务模式、模型、tokens、费用 |
+| `notifications [--page N] [--size M] [--lang zh\|en]` | 官网右上角铃铛通知/消息 feed；别名：`notices`、`messages`；无需认证 |
+| `account-messages` | 个人账户提醒摘要：账户状态、可用额度、额度预警阈值、奖励/赠送额度过期历史；别名：`account-alerts`、`personal-messages` |
+| `balance-changes [--page N] [--size M] [--type TYPE]` | 个人额度变动明细；可筛 `bonusRegisterExpired` / `bonusInviteExpired` / `bonusRechargeExpired` 等 |
 | `modes` | 服务模式列表 + 每个 modeId 支持的模型 |
 | `key-models` | 每个 API Key 继承其服务模式后支持的模型列表 |
+| `redeem CODE [CODE...]` | 兑换一个或多个平台奖励码；调用后自动显示更新后的余额 |
 | `all` | 一键显示 balance / keys / modes / key-models / usage / logs |
 
 ## 示例
@@ -87,8 +91,14 @@ python scripts/pateway_api.py balance
 python scripts/pateway_api.py keys
 python scripts/pateway_api.py usage 24h
 python scripts/pateway_api.py logs --page 1 --size 20
+python scripts/pateway_api.py notifications --page 1 --size 20
+python scripts/pateway_api.py notifications --size 10 --lang en
+python scripts/pateway_api.py account-messages
+python scripts/pateway_api.py balance-changes --size 20
+python scripts/pateway_api.py balance-changes --type bonusInviteExpired
 python scripts/pateway_api.py modes
 python scripts/pateway_api.py key-models
+python scripts/pateway_api.py redeem V5YAUN9U7B F8BF8PPRCX
 python scripts/pateway_api.py all
 ```
 
@@ -102,6 +112,18 @@ python scripts/pateway_api.py all
 | `/usage/summary?period=24h\|7d\|30d` | GET | `{cards: {totalCost, inputTokens, outputTokens, requestCount}, trend: [...]}` |
 | `/usage/details?page=N&pageSize=M` | GET | `{list: [{eventTime, keyName, model, serviceModeTagZh, totalTokens, totalCost, ...}]}` |
 | `/service-modes/options` | GET | `{list: [{serviceModeId, tagZh, isDefault, modelNames, ...}]}` |
+| `/recharge/redeem` | POST | body `{code}`；成功返回 `{amount}`，表示本次兑换奖励额度 |
+| `/user/info` | GET | 个人账户信息与通知设置：`{userId, email, status, inviteCode, push: {quota_warning_threshold, ...}}` |
+| `/user/push` | PUT | 更新个人通知设置，body 如 `{push_email, push_type: "email", quota_warning_threshold}` |
+| `/balance/change/list?page=N&pageSize=M&type=TYPE` | GET | 个人额度变动明细：`{items: [{createdAt, delta, type, status}], total}`；含奖励/赠送额度过期记录 |
+| `https://pateway.ai/json-data-config/pateway_ai/notifications/data.json` | GET | 官网通知/消息数组：`[{id, content, content_en, update_time}]`；公开 feed，无需 `x-token` |
+
+## 个人消息 / 额度提醒说明
+
+- 官网右上角铃铛通知来自公开静态 feed，不是个人站内信。
+- 当前前端未发现独立的个人 inbox/messages 接口。
+- “额度快没了”由 `/user/info` 中的 `push.quota_warning_threshold` 表示预警阈值；`account-messages` 会同时读取余额并判断是否触发。
+- “奖励/赠送额度已过期”体现在 `/balance/change/list` 的 `bonusRegisterExpired`、`bonusInviteExpired`、`bonusRechargeExpired` 等流水类型中；`account-messages` 会汇总这些记录。
 
 ## 注意事项
 

@@ -6,8 +6,11 @@ Usage:
     python pateway_api.py keys                 # show all API keys with usage
     python pateway_api.py usage [period]       # usage summary (24h/7d/30d, default 7d)
     python pateway_api.py logs [--page N] [--size M]  # detailed usage logs
+    python pateway_api.py notifications [--page N] [--size M] [--lang zh|en]  # public site notifications
+    python pateway_api.py account-messages     # personal account alerts/settings + expired reward history
     python pateway_api.py modes                # service modes and supported models
     python pateway_api.py key-models           # API keys with supported models via their service mode
+    python pateway_api.py redeem CODE [CODE...]  # redeem one or more reward codes
     python pateway_api.py all                  # show everything
 
 Flags (before subcommand):
@@ -28,6 +31,10 @@ from cryptography.hazmat.primitives.asymmetric import padding
 
 API_BASE = os.environ.get("PATEWAY_API_BASE", "https://web.pateway.ai/api/v1")
 TOKEN_FILE = os.path.expanduser(os.environ.get("PATEWAY_TOKEN_FILE", "~/.hermes/cache/pateway_token.json"))
+NOTIFICATIONS_URL = os.environ.get(
+    "PATEWAY_NOTIFICATIONS_URL",
+    "https://pateway.ai/json-data-config/pateway_ai/notifications/data.json",
+)
 
 # ── credentials ──────────────────────────────────────────────
 # Set these in your shell or secret manager. Do not hard-code credentials.
@@ -136,6 +143,21 @@ def _req(method, path, body=None, _retry_auth=True):
             return {"code": -1, "message": f"Network error: {e.reason}"}
 
     return {"code": -1, "message": "Max retries exceeded"}
+
+
+def _public_json(url):
+    """Fetch a public JSON endpoint without Pateway authentication."""
+    _rate_limit()
+    req = urllib.request.Request(url)
+    req.add_header("User-Agent", "Mozilla/5.0")
+    req.add_header("Accept", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return {"code": -1, "message": f"HTTP {e.code}: {e.read().decode()}"}
+    except urllib.error.URLError as e:
+        return {"code": -1, "message": f"Network error: {e.reason}"}
 
 
 def _get_token():
@@ -270,6 +292,134 @@ def cmd_logs(page=1, size=20):
         print(f"{t:<22} {key:<14} {mode:<12} {model:<22} {tokens:>10} {cost:>8}")
 
 
+def _format_notification_time(value):
+    return str(value or "").replace("T", " ").replace("+08:00", "")
+
+
+def cmd_notifications(page=1, size=20, lang="zh"):
+    """Read Pateway public notification messages shown by the web bell icon."""
+    if lang not in {"zh", "en"}:
+        return print(f"Invalid lang: {lang}. Use: zh, en")
+    data = _public_json(f"{NOTIFICATIONS_URL}?t={int(time.time() * 1000)}")
+    if isinstance(data, dict) and data.get("code") == -1:
+        return print(f"Error: {data['message']}")
+    if not isinstance(data, list):
+        return print("Error: unexpected notifications response")
+
+    items = []
+    seen = set()
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content_en") if lang == "en" and item.get("content_en") else item.get("content")
+        update_time = item.get("update_time")
+        if not content or not update_time:
+            continue
+        item_id = item.get("id") or f"{update_time}:{content}"
+        if item_id in seen:
+            continue
+        seen.add(item_id)
+        items.append({"id": item_id, "content": content, "update_time": update_time})
+    items.sort(key=lambda x: x["update_time"], reverse=True)
+
+    total = len(items)
+    start = max(page - 1, 0) * size
+    page_items = items[start:start + size]
+    print(f"Notifications: total={total}, page={page}, size={size}, lang={lang}")
+    print("Source: public web notifications feed")
+    print("-" * 90)
+    for idx, item in enumerate(page_items, start=start + 1):
+        print(f"{idx:>2}. {_format_notification_time(item['update_time'])}")
+        print(f"    {item['content'].strip()}")
+
+
+_CHANGE_TYPE_ZH = {
+    "recharge": "购买",
+    "refund": "退款",
+    "bonusRegister": "注册奖励",
+    "bonusRegisterExpired": "注册奖励过期",
+    "bonusInvite": "邀请奖励",
+    "bonusInviteExpired": "邀请奖励过期",
+    "bonusRecharge": "购买赠送",
+    "bonusRechargeExpired": "购买赠送过期",
+    "bonusRedeem": "兑换奖励",
+}
+
+
+def _fetch_balance_changes(page=1, size=100, change_type=None):
+    params = [f"page={page}", f"pageSize={size}"]
+    if change_type:
+        params.append(f"type={change_type}")
+    data = _req("GET", f"/balance/change/list?{'&'.join(params)}")
+    if data.get("code") != 0:
+        raise RuntimeError(data.get("message"))
+    return data["data"]
+
+
+def cmd_balance_changes(page=1, size=50, change_type=None):
+    """Show personal balance change history, including expired gift/reward credits."""
+    data = _fetch_balance_changes(page, size, change_type)
+    items = data.get("items", [])
+    total = data.get("total", len(items))
+    print(f"Balance Changes: total={total}, page={data.get('page', page)}, size={data.get('pageSize', size)}")
+    print(f"{'Time':<22} {'Type':<18} {'Amount':>10} {'Status':<10}")
+    print("-" * 66)
+    for item in items:
+        t = _format_notification_time(item.get("createdAt"))
+        typ = item.get("type", "-")
+        label = _CHANGE_TYPE_ZH.get(typ, typ)
+        delta = item.get("delta", 0) or 0
+        sign = "+" if delta >= 0 else "-"
+        amount = f"{sign}${abs(delta):.2f}"
+        print(f"{t:<22} {label:<18} {amount:>10} {item.get('status', '-'):<10}")
+
+
+def cmd_account_messages():
+    """Summarize personal account notification settings and account-specific alert-like history."""
+    user = _req("GET", "/user/info")
+    if user.get("code") != 0:
+        return print(f"Error: {user.get('message')}")
+    balance = _req("GET", "/balance/summary")
+    if balance.get("code") != 0:
+        return print(f"Error: {balance.get('message')}")
+
+    u = user.get("data", {})
+    b = balance.get("data", {})
+    push = u.get("push") or {}
+    threshold = push.get("quota_warning_threshold")
+    available = b.get("availableBalance", 0) or 0
+
+    print("Personal Account Alerts")
+    print("-" * 66)
+    print(f"Account Status:          {u.get('status', '-')}")
+    print(f"Available Quota:         ${available}")
+    print(f"Monthly Spending:        ${b.get('monthlySpending', 0)}")
+    print(f"Total Rewards:           ${b.get('totalGiftEarned', 0)}")
+    print(f"Quota Warning Threshold: ${threshold if threshold is not None else '-'}")
+    if threshold is not None:
+        if float(available) <= float(threshold):
+            print("Quota Warning:           TRIGGERED (available quota is at/below threshold)")
+        else:
+            print("Quota Warning:           not triggered")
+    print()
+
+    data = _fetch_balance_changes(1, 100)
+    items = data.get("items", [])
+    expired = [i for i in items if "Expired" in str(i.get("type", ""))]
+    print("Expired Reward/Credit History")
+    print("-" * 66)
+    if not expired:
+        print("No expired reward/credit records found in current balance-change history.")
+    else:
+        for item in expired:
+            t = _format_notification_time(item.get("createdAt"))
+            label = _CHANGE_TYPE_ZH.get(item.get("type"), item.get("type", "-"))
+            delta = item.get("delta", 0) or 0
+            print(f"{t:<22} {label:<18} -${abs(delta):.2f} {item.get('status', '-')}")
+    print()
+    print("Note: The web app exposes quota warning settings via /user/info + /user/push and expired-credit events via /balance/change/list. I did not find a separate personal inbox/messages endpoint in the current frontend bundle.")
+
+
 def cmd_modes():
     data = _req("GET", "/service-modes/options")
     if data["code"] != 0:
@@ -311,6 +461,31 @@ def cmd_key_models():
         print()
 
 
+def cmd_redeem(codes):
+    """Redeem one or more platform reward codes, then print the updated balance."""
+    if not codes:
+        return print("Usage: pateway_api.py redeem CODE [CODE...]")
+
+    total = 0
+    ok_count = 0
+    for code in codes:
+        clean = code.strip().upper()
+        if not clean:
+            continue
+        data = _req("POST", "/recharge/redeem", {"code": clean})
+        if data.get("code") == 0:
+            amount = data.get("data", {}).get("amount", 0) or 0
+            total += amount
+            ok_count += 1
+            print(f"{clean}: OK +${amount}")
+        else:
+            print(f"{clean}: ERROR {data.get('message')}")
+
+    print(f"Redeemed: {ok_count}/{len(codes)} codes, total +${total}")
+    print("\n═══ UPDATED BALANCE ═══")
+    cmd_balance()
+
+
 def cmd_all():
     print("═══ BALANCE ═══")
     cmd_balance()
@@ -324,6 +499,8 @@ def cmd_all():
     cmd_usage("7d")
     print("\n═══ RECENT LOGS ═══")
     cmd_logs(1, 10)
+    print("\n═══ NOTIFICATIONS ═══")
+    cmd_notifications(1, 10)
 
 
 if __name__ == "__main__":
@@ -349,10 +526,25 @@ if __name__ == "__main__":
         p = next((int(sys.argv[i+1]) for i, a in enumerate(sys.argv) if a == "--page"), 1)
         s = next((int(sys.argv[i+1]) for i, a in enumerate(sys.argv) if a == "--size"), 20)
         cmd_logs(p, s)
+    elif cmd in {"notifications", "notices", "messages"}:
+        p = next((int(sys.argv[i+1]) for i, a in enumerate(sys.argv) if a == "--page"), 1)
+        s = next((int(sys.argv[i+1]) for i, a in enumerate(sys.argv) if a == "--size"), 20)
+        lang = next((sys.argv[i+1] for i, a in enumerate(sys.argv) if a == "--lang"), "zh")
+        cmd_notifications(p, s, lang)
+    elif cmd in {"account-messages", "account-alerts", "personal-messages"}:
+        cmd_account_messages()
+    elif cmd in {"balance-changes", "balance-history"}:
+        p = next((int(sys.argv[i+1]) for i, a in enumerate(sys.argv) if a == "--page"), 1)
+        s = next((int(sys.argv[i+1]) for i, a in enumerate(sys.argv) if a == "--size"), 50)
+        typ = next((sys.argv[i+1] for i, a in enumerate(sys.argv) if a == "--type"), None)
+        cmd_balance_changes(p, s, typ)
     elif cmd == "modes":
         cmd_modes()
     elif cmd == "key-models":
         cmd_key_models()
+    elif cmd == "redeem":
+        start = 3 if len(sys.argv) > 1 and sys.argv[1] == "--relogin" else 2
+        cmd_redeem(sys.argv[start:])
     elif cmd == "all":
         cmd_all()
     else:

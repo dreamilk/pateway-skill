@@ -10,8 +10,11 @@
 - API Key 列表、服务模式、本月用量
 - 24h / 7d / 30d 用量汇总
 - 详细调用日志
+- 官网通知/消息（右上角铃铛）
+- 个人账户提醒、额度预警阈值、奖励/赠送额度过期历史
 - 服务模式支持的模型
 - 每个 API Key 继承服务模式后支持哪些模型
+- 平台奖励码兑换
 
 > 说明：这个仓库本身是一个可独立运行的 CLI 工具，也可以作为 Hermes Agent 的 skill 使用。很多用户使用 Codex、Claude Code、Claude Desktop、Cursor 等 Agent，所以推荐直接把下面的“安装提示词”复制给你的 Agent，让它自动安装和验证。
 
@@ -128,11 +131,23 @@ python scripts/pateway_api.py usage 7d
 # 查最近调用明细
 python scripts/pateway_api.py logs --page 1 --size 20
 
+# 查官网通知/消息（右上角铃铛）
+python scripts/pateway_api.py notifications --page 1 --size 20
+python scripts/pateway_api.py notifications --size 10 --lang en
+
+# 查个人账户提醒/额度预警设置/奖励过期历史
+python scripts/pateway_api.py account-messages
+python scripts/pateway_api.py balance-changes --size 20
+python scripts/pateway_api.py balance-changes --type bonusInviteExpired
+
 # 查服务模式支持哪些模型
 python scripts/pateway_api.py modes
 
 # 查每个 API Key 支持哪些模型
 python scripts/pateway_api.py key-models
+
+# 兑换一个或多个奖励码，并显示更新后的余额
+python scripts/pateway_api.py redeem CODE1 CODE2
 
 # 一次性输出全部信息
 python scripts/pateway_api.py all
@@ -178,6 +193,12 @@ default-key          active     默认          No limit     $       0.45
 | `/usage/summary?period=24h\|7d\|30d` | GET | 用量汇总 |
 | `/usage/details?page=N&pageSize=M` | GET | 调用明细 |
 | `/service-modes/options` | GET | 服务模式和支持模型 |
+| `/user/info` | GET | 个人账户信息与额度预警设置 |
+| `/user/push` | PUT | 更新个人通知/额度预警设置 |
+| `/balance/change/list?page=N&pageSize=M&type=TYPE` | GET | 额度变动明细，含奖励/赠送额度过期记录 |
+| `https://pateway.ai/json-data-config/pateway_ai/notifications/data.json` | GET | 官网通知/消息 feed（无需认证） |
+
+> 说明：官网铃铛通知是公开产品公告；当前前端未发现独立个人 inbox/messages 接口。个人“额度快没了”提醒来自 `/user/info` 的 `quota_warning_threshold`，奖励/赠送额度过期历史来自 `/balance/change/list`。
 
 ---
 
