@@ -80,6 +80,7 @@ python scripts/pateway_api.py <subcommand>
 | `account-messages` | 个人账户提醒摘要：账户状态、可用额度、额度预警阈值、奖励/赠送额度过期历史；别名：`account-alerts`、`personal-messages` |
 | `balance-changes [--page N] [--size M] [--type TYPE]` | 个人额度变动明细；可筛 `bonusRegisterExpired` / `bonusInviteExpired` / `bonusRechargeExpired` 等 |
 | `modes` | 服务模式列表 + 每个 modeId 支持的模型 |
+| `model-prices` | 无需登录：普通模式和经济模式的模型列表及输入/输出价格（美元/百万 tokens）；别名：`models-prices`、`prices` |
 | `key-models` | 每个 API Key 继承其服务模式后支持的模型列表 |
 | `redeem CODE [CODE...]` | 兑换一个或多个平台奖励码；调用后自动显示更新后的余额 |
 | `all` | 一键显示 balance / keys / modes / key-models / usage / logs |
@@ -97,6 +98,7 @@ python scripts/pateway_api.py account-messages
 python scripts/pateway_api.py balance-changes --size 20
 python scripts/pateway_api.py balance-changes --type bonusInviteExpired
 python scripts/pateway_api.py modes
+python scripts/pateway_api.py model-prices
 python scripts/pateway_api.py key-models
 python scripts/pateway_api.py redeem V5YAUN9U7B F8BF8PPRCX
 python scripts/pateway_api.py all
@@ -111,7 +113,8 @@ python scripts/pateway_api.py all
 | `/user/api-keys` | GET | 每个 key：`{apiKeyName, apiKey, status, serviceModeId, serviceModeTagZh, monthUsage, ...}` |
 | `/usage/summary?period=24h\|7d\|30d` | GET | `{cards: {totalCost, inputTokens, outputTokens, requestCount}, trend: [...]}` |
 | `/usage/details?page=N&pageSize=M` | GET | `{list: [{eventTime, keyName, model, serviceModeTagZh, totalTokens, totalCost, ...}]}` |
-| `/service-modes/options` | GET | `{list: [{serviceModeId, tagZh, isDefault, modelNames, ...}]}` |
+| `/service-modes/options` | GET | `{list: [{serviceModeId, tagZh, isDefault, modelNames, ...}]}`；公开，无需认证 |
+| `/models-info/v1?page=1&pageSize=N` | GET | 模型广场公开数据，含普通/经济模式价格；无需认证 |
 | `/recharge/redeem` | POST | body `{code}`；成功返回 `{amount}`，表示本次兑换奖励额度 |
 | `/user/info` | GET | 个人账户信息与通知设置：`{userId, email, status, inviteCode, push: {quota_warning_threshold, ...}}` |
 | `/user/push` | PUT | 更新个人通知设置，body 如 `{push_email, push_type: "email", quota_warning_threshold}` |

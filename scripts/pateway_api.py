@@ -9,6 +9,7 @@ Usage:
     python pateway_api.py notifications [--page N] [--size M] [--lang zh|en]  # public site notifications
     python pateway_api.py account-messages     # personal account alerts/settings + expired reward history
     python pateway_api.py modes                # service modes and supported models
+    python pateway_api.py model-prices         # public model list + prices for all service modes
     python pateway_api.py key-models           # API keys with supported models via their service mode
     python pateway_api.py redeem CODE [CODE...]  # redeem one or more reward codes
     python pateway_api.py all                  # show everything
@@ -26,8 +27,12 @@ import threading
 import urllib.request
 import urllib.error
 
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding
+try:
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+except ModuleNotFoundError:
+    # Public commands (modes, model-prices, notifications) do not need crypto.
+    hashes = serialization = padding = None
 
 API_BASE = os.environ.get("PATEWAY_API_BASE", "https://web.pateway.ai/api/v1")
 TOKEN_FILE = os.path.expanduser(os.environ.get("PATEWAY_TOKEN_FILE", "~/.hermes/cache/pateway_token.json"))
@@ -73,6 +78,8 @@ _TOKEN_CACHE_VALID = False  # True after first successful token load or login
 
 def _get_public_key():
     """Lazily load the RSA public key."""
+    if serialization is None:
+        raise RuntimeError("cryptography is required for authenticated commands; install requirements.txt")
     global _PUBLIC_KEY
     if _PUBLIC_KEY is None:
         der_bytes = base64.b64decode(PUBLIC_KEY_B64)
@@ -438,6 +445,67 @@ def cmd_modes():
         print()
 
 
+def _public_req(path, query=""):
+    """Make a public JSON request without login or x-token."""
+    url = f"{API_BASE}{path}{query}"
+    req = urllib.request.Request(url, method="GET")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("User-Agent", "Mozilla/5.0")
+    req.add_header("Accept", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return {"code": -1, "message": f"HTTP {e.code}: {e.read().decode()}"}
+    except urllib.error.URLError as e:
+        return {"code": -1, "message": f"Network error: {e.reason}"}
+
+
+def _price_for_mode(model, mode_id):
+    """Return the mode-specific price, falling back to the model price."""
+    for mode in model.get("supportedModes") or []:
+        if mode.get("serviceModeId") == mode_id:
+            return mode.get("modePrice") or mode.get("price") or model.get("price") or model.get("originalPrice")
+    return model.get("price") or model.get("originalPrice")
+
+
+def _price_values(price):
+    """Extract default input/output prices from the gallery price shape."""
+    if not isinstance(price, dict):
+        return None, None
+    default = price.get("default")
+    if not isinstance(default, dict):
+        values = [v for v in price.values() if isinstance(v, dict)]
+        default = values[0] if values else price
+    return default.get("input_price"), default.get("output_price")
+
+
+def cmd_model_prices():
+    """Show supported models and public input/output prices for all modes."""
+    modes_data = _public_req("/service-modes/options")
+    if modes_data.get("code") != 0:
+        return print(f"Error: {modes_data.get('message')}")
+    gallery = _public_req("/models-info/v1", "?page=1&pageSize=1000")
+    if gallery.get("code") != 0:
+        return print(f"Error: {gallery.get('message')}")
+
+    modes = modes_data.get("data", {}).get("list", [])
+    models = {m.get("modelName"): m for m in gallery.get("data", {}).get("list", [])}
+    print(f"{'Mode':<14} {'Model':<34} {'Input/M':>12} {'Output/M':>12}")
+    print("-" * 76)
+    for mode in modes:
+        mode_id = mode.get("serviceModeId")
+        label = mode.get("tagZh") or mode.get("tagEn") or str(mode_id)
+        for name in mode.get("modelNames", []):
+            model = models.get(name, {})
+            price = _price_for_mode(model, mode_id)
+            input_price, output_price = _price_values(price)
+            input_text = "-" if input_price is None else str(input_price)
+            output_text = "-" if output_price is None else str(output_price)
+            print(f"{label:<14} {name:<34} {input_text:>12} {output_text:>12}")
+
+
+
 def cmd_key_models():
     keys_data = _req("GET", "/user/api-keys")
     if keys_data["code"] != 0:
@@ -540,6 +608,8 @@ if __name__ == "__main__":
         cmd_balance_changes(p, s, typ)
     elif cmd == "modes":
         cmd_modes()
+    elif cmd in {"model-prices", "models-prices", "prices"}:
+        cmd_model_prices()
     elif cmd == "key-models":
         cmd_key_models()
     elif cmd == "redeem":
