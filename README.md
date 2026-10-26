@@ -13,6 +13,7 @@
 - 官网通知/消息（右上角铃铛）
 - 个人账户提醒、额度预警阈值、奖励/赠送额度过期历史
 - 服务模式支持的模型
+- 普通模式和经济模式的模型输入/输出价格（无需登录）
 - 每个 API Key 继承服务模式后支持哪些模型
 - 平台奖励码兑换
 
@@ -142,6 +143,9 @@ python scripts/pateway_api.py balance-changes --type bonusInviteExpired
 
 # 查服务模式支持哪些模型
 python scripts/pateway_api.py modes
+
+# 查普通模式和经济模式的模型及输入/输出价格（无需登录）
+python scripts/pateway_api.py model-prices
 
 # 查每个 API Key 支持哪些模型
 python scripts/pateway_api.py key-models
