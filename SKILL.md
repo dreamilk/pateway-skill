@@ -114,7 +114,7 @@ python scripts/pateway_api.py all
 | `/usage/summary?period=24h\|7d\|30d` | GET | `{cards: {totalCost, inputTokens, outputTokens, requestCount}, trend: [...]}` |
 | `/usage/details?page=N&pageSize=M` | GET | `{list: [{eventTime, keyName, model, serviceModeTagZh, totalTokens, totalCost, ...}]}` |
 | `/service-modes/options` | GET | `{list: [{serviceModeId, tagZh, isDefault, modelNames, ...}]}`；公开，无需认证 |
-| `/models-info/v1?page=1&pageSize=N` | GET | 模型广场公开数据，含普通/经济模式价格；无需认证 |
+| `/models-info/v1?page=1&pageSize=N&serviceModeId=ID&marketingOnly=false` | GET | 按服务模式读取模型广场数据和价格；无需认证 |
 | `/recharge/redeem` | POST | body `{code}`；成功返回 `{amount}`，表示本次兑换奖励额度 |
 | `/user/info` | GET | 个人账户信息与通知设置：`{userId, email, status, inviteCode, push: {quota_warning_threshold, ...}}` |
 | `/user/push` | PUT | 更新个人通知设置，body 如 `{push_email, push_type: "email", quota_warning_threshold}` |

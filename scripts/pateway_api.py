@@ -485,17 +485,26 @@ def cmd_model_prices():
     modes_data = _public_req("/service-modes/options")
     if modes_data.get("code") != 0:
         return print(f"Error: {modes_data.get('message')}")
-    gallery = _public_req("/models-info/v1", "?page=1&pageSize=1000")
-    if gallery.get("code") != 0:
-        return print(f"Error: {gallery.get('message')}")
-
     modes = modes_data.get("data", {}).get("list", [])
-    models = {m.get("modelName"): m for m in gallery.get("data", {}).get("list", [])}
+    galleries = {}
+    for mode in modes:
+        mode_id = mode.get("serviceModeId")
+        gallery = _public_req(
+            "/models-info/v1",
+            f"?page=1&pageSize=1000&serviceModeId={mode_id}&marketingOnly=false",
+        )
+        if gallery.get("code") != 0:
+            return print(f"Error loading mode {mode_id}: {gallery.get('message')}")
+        galleries[mode_id] = {
+            m.get("modelName"): m for m in gallery.get("data", {}).get("list", [])
+        }
+
     print(f"{'Mode':<14} {'Model':<34} {'Input/M':>12} {'Output/M':>12}")
     print("-" * 76)
     for mode in modes:
         mode_id = mode.get("serviceModeId")
         label = mode.get("tagZh") or mode.get("tagEn") or str(mode_id)
+        models = galleries.get(mode_id, {})
         for name in mode.get("modelNames", []):
             model = models.get(name, {})
             price = _price_for_mode(model, mode_id)
